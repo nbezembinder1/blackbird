@@ -181,7 +181,7 @@ int main(int argc, char** argv) {
     index++;
   }
   if (params.poloniexApi.empty() == false || params.demoMode == true) {
-    params.addExchange("Poloniex", params.poloniexFees, true, false);
+    params.addExchange("Poloniex", params.poloniexFees, true, true);
     getQuote[index] = Poloniex::getQuote;
     getAvail[index] = Poloniex::getAvail;
     sendLongOrder[index] = Poloniex::sendLongOrder;

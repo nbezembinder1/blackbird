@@ -33,12 +33,16 @@ double getQuote(Parameters& params, bool isBid) {
 }
 
 double getAvail(Parameters& params, std::string currency) {
-  // TODO
-  // This function needs to be implemented
-  // The code below is given as a general guideline but needs to be rewritten
-  // to match the Poloniex API
+  // TODO Function is implemented, but still needs to be tested
   json_t* root = authRequest(params, "https://poloniex.com/tradingApi", "returnBalances", "");
-  double availability = 0.0;
+  double availability;
+  if (currency.compare("usd") == 0) {
+	availability = atof(json_string_value(json_object_get(root, "USDT")));
+  } else if (currency.compare("btc") == 0) {
+	availability = atof(json_string_value(json_object_get(root, "BTC")));
+  } else {
+	availability = 0.0;
+  }
   json_decref(root);
   return availability;
 }
@@ -139,29 +143,49 @@ double getLimitPrice(Parameters& params, double volume, bool isBid) {
 }
 
 json_t* authRequest(Parameters& params, std::string url, std::string request, std::string options) {
-  // TODO
-  // This function needs to be implemented
-  // The code below is given as a general guideline but needs to be rewritten
-  // to match the Poloniex API
+  // TODO Function is implemented, but still needs to be tested
+
+  // Generate nonce
   struct timeval tv;
   gettimeofday(&tv, NULL);
-  unsigned long long nonce = (tv.tv_sec * 1000.0) + (tv.tv_usec * 0.001) + 0.5;
+  unsigned long long nonce = (tv.tv_sec * 100000.0) + (tv.tv_usec * 0.001) + 0.5;
+
+  // Sign POST data using the key's "secret" according to the HMAC-SHA512 method
   std::ostringstream oss;
-  oss << nonce << params.bitstampClientId << params.bitstampApi;
+  oss << "command=" << request << "&nonce=" << nonce;
+
   unsigned char* digest;
-  digest = HMAC(EVP_sha256(), params.bitstampSecret.c_str(), strlen(params.bitstampSecret.c_str()), (unsigned char*)oss.str().c_str(), strlen(oss.str().c_str()), NULL, NULL);
-  char mdString[SHA256_DIGEST_LENGTH+100];  // FIXME +100
-  for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i) {
-    sprintf(&mdString[i*2], "%02X", (unsigned int)digest[i]);
+  digest = HMAC(EVP_sha512(), params.poloniexSecret.c_str(), strlen(params.poloniexSecret.c_str()), (unsigned char*)oss.str().c_str(), strlen(oss.str().c_str()), NULL, NULL);
+  char mdString[SHA512_DIGEST_LENGTH+100];  // FIXME +100
+  for (int i = 0; i < SHA512_DIGEST_LENGTH; ++i) {
+    sprintf(&mdString[i*2], "%02x", (unsigned int)digest[i]);
   }
+
+  // Set POST parameters using request, nonce and option values
   oss.clear();
   oss.str("");
-  oss << "key=" << params.bitstampApi << "&signature=" << mdString << "&nonce=" << nonce << "&" << options;
+  oss << "command=" << request << "&nonce=" << nonce;
+
+  // Poloniex throws an error if '&' is appended as last character
+  if(!options.empty())
+	  oss << "&" << options;
+
   std::string postParams = oss.str().c_str();
+
+  // Add Key and generated signature as HTTP Headers
+  struct curl_slist *headers = NULL;
+  std::ostringstream key, sign;
+  key << "Key:" << params.poloniexApi;
+  sign << "Sign:" << mdString;
+  headers = curl_slist_append(headers, key.str().c_str());
+  headers = curl_slist_append(headers, sign.str().c_str());
+
   CURLcode resCurl;
   if (params.curl) {
     std::string readBuffer;
     curl_easy_setopt(params.curl, CURLOPT_POST,1L);
+    curl_easy_setopt(params.curl, CURLOPT_PROXY, "http://127.0.0.1:8888/"); // TODO: Debugging only
+    curl_easy_setopt(params.curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(params.curl, CURLOPT_POSTFIELDS, postParams.c_str());
     curl_easy_setopt(params.curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(params.curl, CURLOPT_WRITEFUNCTION, WriteCallback);
